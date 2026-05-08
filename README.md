@@ -470,7 +470,7 @@ git log --oneline --graph --all
 
 ## 注意事项
 
-1. **==不要直接在 `main` 分支开发！==**。
+1. ==**不要直接在 `main` 分支开发！**==。
 2. 每个人只修改自己负责的目录，尽量减少冲突。
 3. 每次写代码前先从 `dev` 拉取最新代码。
 4. 提交信息尽量写清楚，例如 `add kafka producer`、`add mysql table`。
