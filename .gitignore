@@ -3,6 +3,7 @@ target/
 *.class
 *.jar
 !backend/target/*.jar
+dependency-reduced-pom.xml
 
 # IDE
 .idea/

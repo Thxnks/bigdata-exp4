@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>航空预订成功统计 · 大数据可视化</title>
+<script src="echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --text: #1e293b;
+    --muted: #64748b;
+    --border: #e2e8f0;
+    --ok: #16a34a;
+    --err: #dc2626;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+  }
+  header {
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+    color: #fff; padding: 22px 28px;
+  }
+  header h1 { font-size: 22px; font-weight: 600; }
+  header p { opacity: .85; font-size: 13px; margin-top: 4px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 28px 48px; }
+
+  .toolbar {
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    background: var(--card); padding: 14px 18px; border-radius: 12px;
+    box-shadow: var(--shadow); margin-top: -28px; position: relative; z-index: 2;
+  }
+  .toolbar label { font-size: 13px; color: var(--muted); }
+  .toolbar input[type=text] {
+    flex: 1; min-width: 280px; padding: 8px 12px; border: 1px solid var(--border);
+    border-radius: 8px; font-size: 13px; color: var(--text);
+  }
+  .btn {
+    padding: 8px 18px; border: none; border-radius: 8px; background: var(--primary);
+    color: #fff; font-size: 13px; cursor: pointer; transition: background .15s;
+  }
+  .btn:hover { background: var(--primary-dark); }
+  .switch { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
+  .status { font-size: 12px; padding: 4px 10px; border-radius: 20px; background: #f1f5f9; color: var(--muted); }
+  .status.ok { background: #dcfce7; color: var(--ok); }
+  .status.err { background: #fee2e2; color: var(--err); }
+
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 20px; }
+  .card {
+    background: var(--card); border-radius: 12px; padding: 18px 20px; box-shadow: var(--shadow);
+  }
+  .card .num { font-size: 28px; font-weight: 700; color: var(--primary); }
+  .card .lbl { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  .panel {
+    background: var(--card); border-radius: 12px; padding: 18px 20px; box-shadow: var(--shadow); margin-top: 20px;
+  }
+  .panel h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+  .chart { width: 100%; height: 340px; }
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; cursor: pointer; user-select: none; white-space: nowrap; }
+  th:hover { color: var(--primary); }
+  tbody tr:hover { background: #f8fafc; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; background: #eff6ff; color: var(--primary); font-weight: 600; }
+  .empty { text-align: center; color: var(--muted); padding: 40px; }
+
+  @media (max-width: 860px) {
+    .cards { grid-template-columns: repeat(2,1fr); }
+    .charts-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>✈️ 航空预订成功统计 · 大数据可视化</h1>
+  <p>原始日志 → Kafka 采集 → Spark 处理 → MySQL 存储 → 后端接口 → 前端展示</p>
+</header>
+
+<div class="wrap">
+  <div class="toolbar">
+    <label>接口地址</label>
+    <input type="text" id="apiUrl" value="http://192.168.88.101:8080/api/stat/list">
+    <button class="btn" id="refreshBtn">刷新数据</button>
+    <label class="switch"><input type="checkbox" id="autoChk"> 自动刷新(5s)</label>
+    <span class="status" id="status">未加载</span>
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="num" id="cRows">-</div><div class="lbl">统计条数</div></div>
+    <div class="card"><div class="num" id="cSuccess">-</div><div class="lbl">预订成功总量</div></div>
+    <div class="card"><div class="num" id="cAirlines">-</div><div class="lbl">航空公司数</div></div>
+    <div class="card"><div class="num" id="cHours">-</div><div class="lbl">时间段数</div></div>
+  </div>
+
+  <div class="charts-row">
+    <div class="panel"><h2>各航空公司预订成功总量 (Top 15)</h2><div class="chart" id="chartAirline"></div></div>
+    <div class="panel"><h2>各时间段预订成功量</h2><div class="chart" id="chartHour"></div></div>
+  </div>
+
+  <div class="panel">
+    <h2>明细数据 <span id="tblCount" class="badge"></span></h2>
+    <div id="tableBox"><div class="empty">点击「刷新数据」加载…</div></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let chartAirline, chartHour, rawData = [], sortKey = 'successCount', sortAsc = false, timer = null;
+
+function initCharts() {
+  chartAirline = echarts.init($('chartAirline'));
+  chartHour = echarts.init($('chartHour'));
+  window.addEventListener('resize', () => { chartAirline.resize(); chartHour.resize(); });
+}
+
+function setStatus(text, cls) {
+  const s = $('status'); s.textContent = text; s.className = 'status' + (cls ? ' ' + cls : '');
+}
+
+async function loadData() {
+  const url = $('apiUrl').value.trim();
+  localStorage.setItem('apiUrl', url);
+  setStatus('加载中…');
+  try {
+    const resp = await fetch(url, { cache: 'no-store' });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    rawData = Array.isArray(data) ? data : [];
+    render();
+    setStatus('已更新 ' + new Date().toLocaleTimeString(), 'ok');
+  } catch (e) {
+    setStatus('加载失败: ' + e.message, 'err');
+    $('tableBox').innerHTML = '<div class="empty">无法连接接口。请确认后端在运行，且接口地址正确。<br>' +
+      '（错误：' + e.message + '）</div>';
+  }
+}
+
+function render() {
+  // 汇总卡片
+  const totalSuccess = rawData.reduce((s, r) => s + (+r.successCount || 0), 0);
+  const airlines = new Set(rawData.map(r => r.airlineCode));
+  const hours = new Set(rawData.map(r => r.statHour));
+  $('cRows').textContent = rawData.length.toLocaleString();
+  $('cSuccess').textContent = totalSuccess.toLocaleString();
+  $('cAirlines').textContent = airlines.size;
+  $('cHours').textContent = hours.size;
+
+  // 各航司汇总
+  const byAirline = {};
+  rawData.forEach(r => { byAirline[r.airlineCode] = (byAirline[r.airlineCode] || 0) + (+r.successCount || 0); });
+  const airlineArr = Object.entries(byAirline).sort((a, b) => b[1] - a[1]).slice(0, 15);
+  chartAirline.setOption({
+    tooltip: { trigger: 'axis' },
+    grid: { left: 50, right: 20, top: 20, bottom: 30 },
+    xAxis: { type: 'category', data: airlineArr.map(d => d[0]), axisLabel: { interval: 0 } },
+    yAxis: { type: 'value' },
+    series: [{ type: 'bar', data: airlineArr.map(d => d[1]), itemStyle: { color: '#2563eb', borderRadius: [4,4,0,0] }, barMaxWidth: 36 }]
+  });
+
+  // 各时间段汇总
+  const byHour = {};
+  rawData.forEach(r => { byHour[r.statHour] = (byHour[r.statHour] || 0) + (+r.successCount || 0); });
+  const hourArr = Object.entries(byHour).sort((a, b) => a[0].localeCompare(b[0]));
+  chartHour.setOption({
+    tooltip: { trigger: 'axis' },
+    grid: { left: 50, right: 20, top: 20, bottom: 50 },
+    xAxis: { type: 'category', data: hourArr.map(d => d[0]), axisLabel: { rotate: 30 } },
+    yAxis: { type: 'value' },
+    series: [{ type: 'line', data: hourArr.map(d => d[1]), smooth: true, areaStyle: { color: 'rgba(37,99,235,.12)' }, itemStyle: { color: '#2563eb' } }]
+  });
+
+  renderTable();
+}
+
+function renderTable() {
+  if (!rawData.length) { $('tableBox').innerHTML = '<div class="empty">暂无数据</div>'; $('tblCount').textContent = ''; return; }
+  const rows = [...rawData].sort((a, b) => {
+    let x = a[sortKey], y = b[sortKey];
+    if (typeof x === 'string') { return sortAsc ? x.localeCompare(y) : y.localeCompare(x); }
+    return sortAsc ? x - y : y - x;
+  });
+  $('tblCount').textContent = rawData.length + ' 条';
+  const arrow = k => sortKey === k ? (sortAsc ? ' ▲' : ' ▼') : '';
+  let html = '<table><thead><tr>' +
+    `<th data-k="statHour">时间段${arrow('statHour')}</th>` +
+    `<th data-k="airlineCode">航空公司${arrow('airlineCode')}</th>` +
+    `<th class="num" data-k="successCount">预订成功数${arrow('successCount')}</th>` +
+    '</tr></thead><tbody>';
+  rows.forEach(r => {
+    html += `<tr><td>${r.statHour ?? ''}</td><td><span class="badge">${r.airlineCode ?? ''}</span></td>` +
+            `<td class="num">${(+r.successCount || 0).toLocaleString()}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  $('tableBox').innerHTML = html;
+  $('tableBox').querySelectorAll('th').forEach(th => th.onclick = () => {
+    const k = th.dataset.k;
+    if (sortKey === k) sortAsc = !sortAsc; else { sortKey = k; sortAsc = false; }
+    renderTable();
+  });
+}
+
+// 事件
+$('refreshBtn').onclick = loadData;
+$('autoChk').onchange = e => {
+  if (e.target.checked) { timer = setInterval(loadData, 5000); } else { clearInterval(timer); timer = null; }
+};
+window.addEventListener('load', () => {
+  const saved = localStorage.getItem('apiUrl');
+  if (saved) $('apiUrl').value = saved;
+  initCharts();
+  loadData();
+});
+</script>
+</body>
+</html>
