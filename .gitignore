@@ -1,0 +1,18 @@
+# Java / Maven
+target/
+*.class
+*.jar
+!backend/target/*.jar
+
+# IDE
+.idea/
+*.iml
+
+# OS
+Thumbs.db
+.DS_Store
+
+# 大数据集(超过 GitHub 100MB 限制, 不入库)
+实验四-kafka采集数据集.txt
+*.csv
+data/
