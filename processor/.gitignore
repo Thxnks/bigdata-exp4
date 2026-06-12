@@ -10,6 +10,9 @@ data/sample_log.txt
 # Spark Structured Streaming state
 checkpoints/
 
+# Maven build output
+target/
+
 # Python cache
 __pycache__/
 *.py[cod]

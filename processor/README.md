@@ -1,32 +1,29 @@
 # Processor Module
 
-This directory contains the B part of the project: Spark Structured Streaming
-processing for airline booking success statistics.
+This directory is the B part of `bigdata-exp4`: Spark/MapReduce data
+processing. The current main implementation uses Java + Spark.
 
 ## Function
 
-The final runtime flow is:
+The processor reads raw airline booking log lines, keeps only `ITARES` records,
+parses booking success entries, counts successful bookings by hour and airline,
+and writes the result to MySQL.
+
+Final data flow:
 
 ```text
-Kafka topic flight_log
--> Spark Structured Streaming
--> parse ITARES success records
--> count success by hour and airline
--> upsert incremental counts into MySQL airline_success_stat
+Kafka gds-log-topic
+-> Java + Spark processor
+-> MySQL bigdata_exp4.stat_result
+-> backend/frontend display
 ```
 
-The program counts repeated success entries separately. For example:
+This module only handles data processing. It does not implement `producer/`,
+`backend/`, `sql/`, or `frontend/`.
 
-```text
-CA:success;CA:success;
-```
+## Input Fields
 
-is counted as 2 successes for airline `CA`.
-
-## Input Log Fields
-
-Each Kafka message should be one raw comma-separated log line. The parser uses
-these zero-based fields:
+Each log line is comma-separated. The parser uses these zero-based fields:
 
 ```text
 fields[1]  log type, only ITARES is processed
@@ -35,99 +32,115 @@ fields[3]  hour, for example 19
 fields[8]  success entries, for example CA:success;CA:success;
 ```
 
-The output hour format is:
+`stat_hour` is formatted as:
 
 ```text
 2018-08-30 19
 ```
 
+Repeated success entries in the same line are counted repeatedly. For example,
+`CA:success;CA:success;` is counted as 2 successful bookings for `CA`.
+
+## Kafka Input
+
+The Kafka settings follow the project README unified convention:
+
+```text
+bootstrap servers: 192.168.88.101:9092
+topic: gds-log-topic
+```
+
+One Kafka message should contain one raw log line.
+
 ## MySQL Output
 
-The output table is `airline_success_stat`.
+The processor writes to:
+
+```text
+host: 192.168.88.101
+port: 3306
+database: bigdata_exp4
+table: stat_result
+username: root
+password: root
+```
+
+Output fields:
 
 ```text
 stat_hour
 airline_code
 success_count
-updated_at
 ```
 
-The primary key is:
+## Local File Test
+
+The Java program supports a local batch mode for testing before Kafka is ready.
+By default, it first tries:
 
 ```text
-(stat_hour, airline_code)
+data/kafka采集数据实验.txt
 ```
 
-Each streaming micro-batch is grouped inside `foreachBatch`, then written with:
+If that file does not exist, it falls back to:
 
-```sql
-INSERT ... ON DUPLICATE KEY UPDATE
-success_count = success_count + VALUES(success_count)
+```text
+processor/data/sample_log.txt
 ```
 
-This avoids inserting duplicate rows and avoids adding cumulative Spark results
-multiple times.
+You can also pass a file path explicitly with `--input`.
 
-## Local Test Without Kafka
+## Build
 
-Run the parser and aggregation test with the sample log file:
+Run from the `processor/` directory:
 
 ```bash
-python processor/local_batch_test.py --limit 1000
+mvn clean package
 ```
 
-Use `--limit 0` to process the whole sample file:
+The packaged jar is generated under:
 
-```bash
-python processor/local_batch_test.py --limit 0
+```text
+processor/target/
 ```
 
-## Streaming Run Later
+## Run Local Batch Mode
 
-Copy the example config and fill in local values. Do not commit the real config.
-
-```bash
-cp processor/config/processor_config.example.json processor/config/processor_config.json
-```
-
-Create the MySQL table:
-
-```bash
-mysql -u <user> -p <database> < processor/sql/airline_success_stat.sql
-```
-
-After Kafka is ready, run the streaming processor with Spark. Version numbers
-must match the Spark and Scala versions on the Ubuntu VM.
+Run from the project root:
 
 ```bash
 spark-submit \
-  --packages org.apache.spark:spark-sql-kafka-0-10_2.12:<spark-version> \
-  processor/spark_streaming_airline_success.py \
-  --config processor/config/processor_config.json
+  --class com.bigdata.processor.AirlineSuccessProcessor \
+  processor/target/processor-1.0.0.jar \
+  --mode local
 ```
 
-PyMySQL must be available on the Spark driver and executors:
+Run with an explicit input file:
 
 ```bash
-pip install pymysql
+spark-submit \
+  --class com.bigdata.processor.AirlineSuccessProcessor \
+  processor/target/processor-1.0.0.jar \
+  --mode local \
+  --input processor/data/sample_log.txt
 ```
 
-## Interfaces To Confirm
+Local mode prints the aggregated result and writes the same fields to
+`bigdata_exp4.stat_result`.
 
-Confirm with A:
+## Run Kafka Streaming Mode
 
-```text
-Kafka bootstrap server address
-topic name flight_log
-one message equals one raw log line
-message value is plain UTF-8 text
-starting offset for demo, latest or earliest
+After Kafka and MySQL are ready:
+
+```bash
+spark-submit \
+  --class com.bigdata.processor.AirlineSuccessProcessor \
+  processor/target/processor-1.0.0.jar \
+  --mode kafka
 ```
 
-Confirm with C/D:
-
-```text
-MySQL host, database, user, and permission scope
-whether frontend expects stat_hour as 2018-08-30 19
-whether table name airline_success_stat is final
-```
+Kafka streaming mode reads `gds-log-topic`, aggregates each micro-batch by
+`stat_hour` and `airline_code`, and writes `stat_hour, airline_code,
+success_count` to `stat_result`. If a row for the same `stat_hour` and
+`airline_code` already exists, the processor updates `success_count`; otherwise
+it inserts a new row.
