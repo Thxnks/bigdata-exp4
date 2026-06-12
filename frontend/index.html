@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>航空预订成功统计 · 大数据可视化看板</title>
+<script src="echarts.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --font-serif:"Noto Serif SC","Source Han Serif SC","Songti SC",STSong,"SimSun",serif;
+    --font-sans:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    --bg:#f6f5f2; --bg-grad:radial-gradient(1200px 500px at 80% -10%, #eef2fb 0%, rgba(238,242,251,0) 60%);
+    --surface:#ffffff; --surface-2:#f5f5f3; --surface-glass:rgba(255,255,255,.72);
+    --border:#ecebe6; --border-strong:#e2e1da;
+    --text:#2c2b28; --text-2:#6a6862; --text-3:#9b9890;
+    --primary:#3f63dd; --primary-hover:#3253c4; --primary-soft:#edf1fc;
+    --ok:#2e9e6b; --ok-soft:#e7f5ee; --err:#d65a52; --err-soft:#fbecea;
+    --shadow-sm:0 1px 2px rgba(40,38,34,.03),0 1px 3px rgba(40,38,34,.04);
+    --shadow-md:0 6px 24px rgba(40,38,34,.06);
+    --shadow-lg:0 14px 40px rgba(40,38,34,.10);
+    --radius:20px; --radius-sm:14px;
+    --ico1-bg:#edf1fc; --ico2-bg:#e7f5ee; --ico3-bg:#fbf0e2; --ico4-bg:#f1edfb;
+  }
+  [data-theme="dark"]{
+    --bg:#17161a; --bg-grad:radial-gradient(1200px 500px at 80% -10%, #20222e 0%, rgba(32,34,46,0) 60%);
+    --surface:#1e1d22; --surface-2:#26252b; --surface-glass:rgba(23,22,26,.72);
+    --border:#2c2b31; --border-strong:#36353d;
+    --text:#eae8e4; --text-2:#a6a39c; --text-3:#75726b;
+    --primary:#6f8cf2; --primary-hover:#869df5; --primary-soft:#212741;
+    --ok:#46c98a; --ok-soft:#173024; --err:#e8706a; --err-soft:#36201e;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.3); --shadow-md:0 6px 24px rgba(0,0,0,.38);
+    --shadow-lg:0 14px 40px rgba(0,0,0,.5);
+    --ico1-bg:#20283f; --ico2-bg:#152c20; --ico3-bg:#332813; --ico4-bg:#241e3a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    font-family:var(--font-sans); -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    background:var(--bg); background-image:var(--bg-grad); background-attachment:fixed;
+    color:var(--text); transition:background-color .3s,color .3s; font-size:14px; line-height:1.65;
+  }
+
+  /* 顶部导航：玻璃感、克制 */
+  header{
+    background:var(--surface-glass); backdrop-filter:saturate(1.4) blur(14px); -webkit-backdrop-filter:saturate(1.4) blur(14px);
+    border-bottom:1px solid var(--border); padding:15px 0; position:sticky; top:0; z-index:20;
+  }
+  .nav{max-width:1240px; margin:0 auto; padding:0 32px; display:flex; align-items:center; gap:14px;}
+  .logo{width:36px; height:36px; border-radius:11px; background:linear-gradient(140deg,#5a78ec,#3f63dd);
+    display:flex; align-items:center; justify-content:center; font-size:18px; box-shadow:0 4px 12px rgba(63,99,221,.30);}
+  .brand h1{font-family:var(--font-serif); font-size:18px; font-weight:600; letter-spacing:.3px; line-height:1.25;}
+  .brand p{font-size:11.5px; color:var(--text-3); margin-top:1px; letter-spacing:.2px;}
+  .nav .spacer{flex:1;}
+  .theme-btn{font-family:var(--font-sans); background:var(--surface); border:1px solid var(--border-strong); color:var(--text-2);
+    padding:7px 15px; border-radius:999px; cursor:pointer; font-size:12.5px; transition:.18s;}
+  .theme-btn:hover{border-color:var(--primary); color:var(--primary); transform:translateY(-1px);}
+
+  .wrap{max-width:1240px; margin:0 auto; padding:26px 32px 60px;}
+
+  /* toolbar：悬浮玻璃胶囊 */
+  .toolbar{display:flex; gap:10px; align-items:center; background:var(--surface-glass);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    padding:11px 15px; border-radius:16px; box-shadow:var(--shadow-md); border:1px solid var(--border);}
+  .tb-left{display:flex; gap:8px; align-items:center;}
+  .tb-right{display:flex; gap:10px; align-items:center; margin-left:auto;}
+  .btn{font-family:var(--font-sans); padding:8px 17px; border:none; border-radius:11px; background:var(--primary); color:#fff;
+    font-size:13px; font-weight:500; cursor:pointer; transition:.18s; line-height:1.2;}
+  .btn:hover{background:var(--primary-hover); transform:translateY(-1px); box-shadow:0 4px 14px rgba(63,99,221,.28);}
+  .btn:active{transform:translateY(0);}
+  .btn.ghost{background:transparent; color:var(--text-2); border:1px solid var(--border-strong); box-shadow:none;}
+  .btn.ghost:hover{color:var(--primary); border-color:var(--primary); background:var(--primary-soft);}
+  .switch{display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--text-2); cursor:pointer; user-select:none; padding-left:4px;}
+  .switch input{accent-color:var(--primary);}
+  .status{font-size:11.5px; padding:5px 12px; border-radius:999px; background:var(--surface-2);
+    color:var(--text-3); white-space:nowrap; border:1px solid var(--border);}
+  .status.ok{background:var(--ok-soft); color:var(--ok); border-color:transparent;}
+  .status.err{background:var(--err-soft); color:var(--err); border-color:transparent;}
+  .icon-btn{width:36px; height:36px; border-radius:11px; border:1px solid var(--border-strong);
+    background:var(--surface); color:var(--text-2); cursor:pointer; font-size:15px;
+    display:flex; align-items:center; justify-content:center; transition:.18s;}
+  .icon-btn:hover{color:var(--primary); border-color:var(--primary); background:var(--primary-soft);}
+  .settings-wrap{position:relative;}
+  .settings-panel{position:absolute; right:0; top:46px; width:344px; background:var(--surface);
+    border:1px solid var(--border-strong); border-radius:16px; box-shadow:var(--shadow-lg); padding:18px; display:none;}
+  .settings-panel.open{display:block;}
+  .settings-panel label{font-size:12px; color:var(--text-2); display:block; margin-bottom:7px;}
+  .settings-panel input{width:100%; padding:10px 13px; border:1px solid var(--border-strong); border-radius:11px;
+    font-size:13px; color:var(--text); background:var(--surface-2); transition:.18s; font-family:var(--font-sans);}
+  .settings-panel input:focus{outline:none; border-color:var(--primary); background:var(--surface); box-shadow:0 0 0 3px var(--primary-soft);}
+  .settings-panel .row{display:flex; gap:8px; margin-top:13px;}
+
+  /* KPI 卡片 */
+  .cards{display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-top:20px;}
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:19px 21px; display:flex; align-items:center; gap:15px;
+    transition:transform .2s cubic-bezier(.2,.7,.3,1),box-shadow .2s,border-color .2s; box-shadow:var(--shadow-sm);}
+  .card:hover{transform:translateY(-3px); box-shadow:var(--shadow-md); border-color:var(--border-strong);}
+  .card .ico{width:46px; height:46px; border-radius:13px; display:flex; align-items:center; justify-content:center;
+    font-size:21px; flex-shrink:0;}
+  .card.a1 .ico{background:var(--ico1-bg);} .card.a2 .ico{background:var(--ico2-bg);}
+  .card.a3 .ico{background:var(--ico3-bg);} .card.a4 .ico{background:var(--ico4-bg);}
+  .card .num{font-family:var(--font-serif); font-size:30px; font-weight:600; line-height:1.1; letter-spacing:.2px; font-variant-numeric:tabular-nums;}
+  .card .lbl{font-size:12.5px; color:var(--text-3); margin-top:4px;}
+
+  /* 面板 */
+  .panel{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:22px 24px; box-shadow:var(--shadow-sm); margin-top:16px;}
+  .panel-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; gap:12px; flex-wrap:wrap; min-height:34px;}
+  .panel h2{font-family:var(--font-serif); font-size:17px; font-weight:600; letter-spacing:.3px;}
+  .chart{width:100%; height:320px;}
+  .charts-row{display:grid; grid-template-columns:1.55fr 1fr; gap:16px; margin-top:16px;}
+  .seg{display:inline-flex; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:3px;}
+  .seg button{font-family:var(--font-sans); border:none; background:transparent; color:var(--text-2); padding:5px 13px; font-size:12px;
+    cursor:pointer; transition:.18s; border-radius:7px; font-weight:500;}
+  .seg button.active{background:var(--surface); color:var(--primary); box-shadow:var(--shadow-sm);}
+
+  /* 表格 */
+  .table-scroll{overflow:hidden; border:1px solid var(--border); border-radius:14px;}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  thead th{background:var(--surface-2); color:var(--text-2); font-weight:600; cursor:pointer; user-select:none;
+    white-space:nowrap; padding:12px 16px; border-bottom:1px solid var(--border); transition:color .15s;}
+  thead th:hover{color:var(--primary);}
+  tbody td{padding:13px 16px; border-bottom:1px solid var(--border); color:var(--text);}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr{transition:background .14s;}
+  tbody tr:hover{background:var(--surface-2);}
+  td.num,th.num{text-align:right; font-variant-numeric:tabular-nums;}
+  .badge{display:inline-block; padding:2px 11px; border-radius:999px; background:var(--primary-soft);
+    color:var(--primary); font-weight:600; font-size:12px;}
+  .empty{text-align:center; color:var(--text-3); padding:46px; font-size:13px;}
+  .search{font-family:var(--font-sans); padding:8px 14px 8px 33px; border:1px solid var(--border-strong); border-radius:11px; font-size:13px;
+    background:var(--surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239b9890' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E") no-repeat 12px center;
+    color:var(--text); width:236px; transition:.18s;}
+  .search:focus{outline:none; border-color:var(--primary); background-color:var(--surface); box-shadow:0 0 0 3px var(--primary-soft);}
+  .search::placeholder{color:var(--text-3);}
+
+  @media (max-width:880px){
+    .nav,.wrap{padding-left:18px; padding-right:18px;}
+    .cards{grid-template-columns:repeat(2,1fr);} .charts-row{grid-template-columns:1fr;}
+    .tb-left .switch span{display:none;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <div class="logo">✈️</div>
+    <div class="brand">
+      <h1>航空预订成功统计</h1>
+      <p>Kafka 采集 · Spark 处理 · MySQL 存储 · 实时可视化</p>
+    </div>
+    <div class="spacer"></div>
+    <button class="theme-btn" id="themeBtn">🌙 深色</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="toolbar">
+    <div class="tb-left">
+      <button class="btn" id="refreshBtn">刷新</button>
+      <button class="btn ghost" id="exportBtn">导出 CSV</button>
+      <label class="switch"><input type="checkbox" id="autoChk"> <span>自动刷新 5s</span></label>
+    </div>
+    <div class="tb-right">
+      <span class="status" id="status">未加载</span>
+      <div class="settings-wrap">
+        <button class="icon-btn" id="settingsBtn" title="接口设置">⚙</button>
+        <div class="settings-panel" id="settingsPanel">
+          <label>后端接口地址 (API)</label>
+          <input type="text" id="apiUrl" value="http://192.168.88.101:8080/api/stat/list">
+          <div class="row"><button class="btn" id="applyUrlBtn" style="flex:1">应用并刷新</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card a1"><div class="ico">📊</div><div><div class="num" id="cRows">-</div><div class="lbl">统计条数</div></div></div>
+    <div class="card a2"><div class="ico">✅</div><div><div class="num" id="cSuccess">-</div><div class="lbl">预订成功总量</div></div></div>
+    <div class="card a3"><div class="ico">🏢</div><div><div class="num" id="cAirlines">-</div><div class="lbl">航空公司数</div></div></div>
+    <div class="card a4"><div class="ico">🕐</div><div><div class="num" id="cHours">-</div><div class="lbl">时间段数</div></div></div>
+  </div>
+
+  <div class="charts-row">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>各航空公司预订成功量</h2>
+        <div class="seg" id="topnSeg">
+          <button data-n="10">Top 10</button><button data-n="15" class="active">Top 15</button><button data-n="0">全部</button>
+        </div>
+      </div>
+      <div class="chart" id="chartAirline"></div>
+    </div>
+    <div class="panel"><div class="panel-head"><h2>航司占比</h2></div><div class="chart" id="chartPie"></div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>各时间段预订成功量（按航司堆叠）</h2></div>
+    <div class="chart" id="chartStack" style="height:360px"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>明细数据 <span id="tblCount" class="badge"></span></h2>
+      <input class="search" id="searchInp" placeholder="搜索航司 / 时间段…">
+    </div>
+    <div id="tableBox"><div class="empty">点击「刷新」加载…</div></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+// 统一调色盘：所有图表按"航司全局排名"取色，保证柱状图/饼图/堆叠图颜色一一对应
+const PALETTE = ['#3f63dd','#2e9e6b','#e0922f','#7b6cf0','#d96aa8','#3fb0c8','#dd5a55','#5a8de0','#8bb84a','#e08a4a','#9a6cf0','#3bb6a0','#d4a93a','#46b46a'];
+const GREY = '#b4b0a8';
+let chartAirline, chartPie, chartStack, rawData=[], sortKey='successCount', sortAsc=false, timer=null, topN=15, keyword='', colorMap={};
+
+function themeColors(){ const dark=document.body.dataset.theme==='dark';
+  return { text:dark?'#bdbab3':'#6a6862', axis:dark?'#2c2b31':'#ecebe6', border:dark?'#1e1d22':'#fff' }; }
+function initCharts(){
+  chartAirline=echarts.init($('chartAirline')); chartPie=echarts.init($('chartPie')); chartStack=echarts.init($('chartStack'));
+  window.addEventListener('resize',()=>{chartAirline.resize();chartPie.resize();chartStack.resize();});
+}
+function setStatus(t,c){ const s=$('status'); s.textContent=t; s.className='status'+(c?' '+c:''); }
+const fmt = n => (+n||0).toLocaleString();
+
+async function loadData(){
+  const url=$('apiUrl').value.trim(); localStorage.setItem('apiUrl',url); setStatus('加载中…');
+  try{
+    const resp=await fetch(url,{cache:'no-store'}); if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const data=await resp.json(); rawData=Array.isArray(data)?data:[]; render();
+    setStatus('已更新 '+new Date().toLocaleTimeString(),'ok');
+  }catch(e){ setStatus('加载失败: '+e.message,'err');
+    $('tableBox').innerHTML='<div class="empty">无法连接接口，请在右上角 ⚙ 确认接口地址，并确保后端在运行。<br>（'+e.message+'）</div>'; }
+}
+
+function render(){
+  const tc=themeColors();
+  const axisLabel={color:tc.text,fontSize:12};
+  const splitLine={lineStyle:{color:tc.axis,type:'dashed'}};
+  const totalSuccess=rawData.reduce((s,r)=>s+(+r.successCount||0),0);
+  const airlines=new Set(rawData.map(r=>r.airlineCode)), hours=new Set(rawData.map(r=>r.statHour));
+  $('cRows').textContent=fmt(rawData.length); $('cSuccess').textContent=fmt(totalSuccess);
+  $('cAirlines').textContent=airlines.size; $('cHours').textContent=hours.size;
+
+  // 航司按总量排名 → 建立全局颜色映射(所有图表共用)
+  const byAirline={}; rawData.forEach(r=>byAirline[r.airlineCode]=(byAirline[r.airlineCode]||0)+(+r.successCount||0));
+  const sortedAir=Object.entries(byAirline).sort((a,b)=>b[1]-a[1]);
+  colorMap={}; sortedAir.forEach((d,i)=>colorMap[d[0]]=PALETTE[i%PALETTE.length]);
+  const colorOf = name => name==='其他' ? GREY : (colorMap[name]||GREY);
+
+  // 1) 各航司柱状图(每根柱用该航司的统一色)
+  const airArr = topN>0 ? sortedAir.slice(0,topN) : sortedAir;
+  chartAirline.setOption({
+    textStyle:{fontFamily:'system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif'},
+    tooltip:{trigger:'axis',valueFormatter:v=>fmt(v)+' 次'},
+    grid:{left:46,right:14,top:14,bottom:26,containLabel:true},
+    xAxis:{type:'category',data:airArr.map(d=>d[0]),axisLabel,axisTick:{show:false},axisLine:{lineStyle:{color:tc.axis}}},
+    yAxis:{type:'value',axisLabel,axisLine:{show:false},splitLine},
+    series:[{type:'bar',barMaxWidth:24,data:airArr.map(d=>({value:d[1],itemStyle:{color:colorOf(d[0]),borderRadius:[6,6,0,0]}}))}]
+  },true);
+
+  // 2) 占比环形图(Top8 + 其他)，颜色与柱状图一致，tooltip 显示数值+百分比
+  const top8=sortedAir.slice(0,8), otherSum=sortedAir.slice(8).reduce((s,d)=>s+d[1],0);
+  const pieData=top8.map(d=>({name:d[0],value:d[1],itemStyle:{color:colorOf(d[0])}}));
+  if(otherSum>0)pieData.push({name:'其他',value:otherSum,itemStyle:{color:GREY}});
+  chartPie.setOption({
+    textStyle:{fontFamily:'system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif'},
+    tooltip:{trigger:'item',formatter:p=>`${p.marker}${p.name}<br/><b>${fmt(p.value)}</b> 次 · ${p.percent}%`},
+    legend:{type:'scroll',orient:'vertical',right:6,top:'center',itemWidth:9,itemHeight:9,itemGap:12,
+      textStyle:{color:tc.text,fontSize:12}},
+    series:[{type:'pie',radius:['54%','75%'],center:['36%','50%'],avoidLabelOverlap:true,
+      itemStyle:{borderColor:tc.border,borderWidth:3,borderRadius:5},
+      label:{show:false},emphasis:{scale:true,scaleSize:7,label:{show:true,fontSize:14,fontWeight:'bold',formatter:'{b}\n{d}%',color:tc.text}},
+      data:pieData}]
+  },true);
+
+  // 3) 时段×航司堆叠柱状图，单时间点时收窄柱宽避免大色块
+  const topAir=sortedAir.slice(0,8).map(d=>d[0]);
+  const hourList=[...hours].sort((a,b)=>a.localeCompare(b));
+  const m={}; rawData.forEach(r=>{(m[r.statHour]??={});const a=topAir.includes(r.airlineCode)?r.airlineCode:'其他';
+    m[r.statHour][a]=(m[r.statHour][a]||0)+(+r.successCount||0);});
+  const stackNames=[...topAir]; if(sortedAir.length>8)stackNames.push('其他');
+  const single = hourList.length<=1;          // 边缘情况：只有一个时间段
+  chartStack.setOption({
+    textStyle:{fontFamily:'system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif'},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},order:'valueDesc',valueFormatter:v=>fmt(v)+' 次'},
+    legend:{data:stackNames,textStyle:{color:tc.text,fontSize:12},top:0,type:'scroll',itemWidth:12,itemHeight:12,itemGap:14},
+    grid:{left:46,right:16,top:40,bottom:30,containLabel:true},
+    xAxis:{type:'category',data:hourList,axisLabel:{...axisLabel,rotate:hourList.length>6?30:0},axisTick:{show:false},axisLine:{lineStyle:{color:tc.axis}}},
+    yAxis:{type:'value',axisLabel,axisLine:{show:false},splitLine},
+    series:stackNames.map(a=>({name:a,type:'bar',stack:'total',emphasis:{focus:'series'},
+      barMaxWidth: single?64:42, itemStyle:{color:colorOf(a),borderRadius:a===stackNames[stackNames.length-1]?[4,4,0,0]:0},
+      data:hourList.map(h=>m[h]?.[a]||0)}))
+  },true);
+
+  renderTable();
+}
+
+function renderTable(){
+  let data=rawData;
+  if(keyword){const k=keyword.toLowerCase();
+    data=rawData.filter(r=>(r.airlineCode||'').toLowerCase().includes(k)||(r.statHour||'').toLowerCase().includes(k));}
+  if(!data.length){$('tableBox').innerHTML='<div class="empty">无匹配数据</div>';$('tblCount').textContent='';return;}
+  const rows=[...data].sort((a,b)=>{let x=a[sortKey],y=b[sortKey];
+    if(typeof x==='string')return sortAsc?x.localeCompare(y):y.localeCompare(x);return sortAsc?x-y:y-x;});
+  $('tblCount').textContent=data.length+' 条';
+  const arr=k=>sortKey===k?(sortAsc?' ▲':' ▼'):'';
+  let h='<div class="table-scroll"><table><thead><tr>'+
+    `<th data-k="statHour">时间段${arr('statHour')}</th>`+
+    `<th data-k="airlineCode">航空公司${arr('airlineCode')}</th>`+
+    `<th class="num" data-k="successCount">预订成功数${arr('successCount')}</th></tr></thead><tbody>`;
+  rows.forEach(r=>h+=`<tr><td>${r.statHour??''}</td><td><span class="badge">${r.airlineCode??''}</span></td><td class="num">${fmt(r.successCount)}</td></tr>`);
+  $('tableBox').innerHTML=h+'</tbody></table></div>';
+  $('tableBox').querySelectorAll('th').forEach(th=>th.onclick=()=>{const k=th.dataset.k;
+    if(sortKey===k)sortAsc=!sortAsc;else{sortKey=k;sortAsc=false;}renderTable();});
+}
+
+function exportCSV(){
+  if(!rawData.length){alert('暂无数据');return;}
+  const rows=[['stat_hour','airline_code','success_count'],...rawData.map(r=>[r.statHour,r.airlineCode,r.successCount])];
+  const csv='﻿'+rows.map(r=>r.join(',')).join('\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download='stat_result_'+Date.now()+'.csv'; a.click();
+}
+
+// 事件
+$('refreshBtn').onclick=loadData;
+$('exportBtn').onclick=exportCSV;
+$('applyUrlBtn').onclick=()=>{$('settingsPanel').classList.remove('open');loadData();};
+$('autoChk').onchange=e=>{if(e.target.checked)timer=setInterval(loadData,5000);else{clearInterval(timer);timer=null;}};
+$('searchInp').oninput=e=>{keyword=e.target.value.trim();renderTable();};
+$('topnSeg').onclick=e=>{if(e.target.tagName!=='BUTTON')return;
+  [...e.currentTarget.children].forEach(b=>b.classList.remove('active'));e.target.classList.add('active');
+  topN=+e.target.dataset.n; if(rawData.length)render();};
+$('settingsBtn').onclick=e=>{e.stopPropagation();$('settingsPanel').classList.toggle('open');};
+document.addEventListener('click',e=>{ if(!e.target.closest('.settings-wrap'))$('settingsPanel').classList.remove('open'); });
+$('themeBtn').onclick=()=>{const dark=document.body.dataset.theme==='dark';
+  document.body.dataset.theme=dark?'':'dark';$('themeBtn').textContent=dark?'🌙 深色':'☀️ 浅色';
+  localStorage.setItem('theme',document.body.dataset.theme); if(rawData.length)render();};
+
+window.addEventListener('load',()=>{
+  const savedUrl=localStorage.getItem('apiUrl'); if(savedUrl)$('apiUrl').value=savedUrl;
+  const savedTheme=localStorage.getItem('theme'); if(savedTheme==='dark'){document.body.dataset.theme='dark';$('themeBtn').textContent='☀️ 浅色';}
+  initCharts(); loadData();
+});
+</script>
+</body>
+</html>
