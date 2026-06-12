@@ -4,7 +4,10 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.streaming.DataStreamReader;
+import org.apache.spark.sql.streaming.DataStreamWriter;
 import org.apache.spark.sql.streaming.StreamingQuery;
+import org.apache.spark.sql.streaming.Trigger;
 
 import static org.apache.spark.sql.functions.col;
 import static org.apache.spark.sql.functions.explode;
@@ -38,6 +41,10 @@ public class KafkaSparkProcessor {
         String jdbcUrl    = args.length > 1 ? args[1]
                 : "jdbc:mysql://node1:3306/bigdata_exp4?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai";
         String checkpoint = args.length > 2 ? args[2] : "/home/hadoop/spark-ckpt-gds";
+        // 演示用：每个微批最多读多少条 Kafka 消息(空=不限)；批次间隔秒(空=尽快)。
+        // 设了这两个，数据即使已全在 Kafka，也会一小批一小批处理，前端可见渐进增长。
+        String maxPerTrigger = args.length > 3 ? args[3] : "";
+        String triggerSec    = args.length > 4 ? args[4] : "";
 
         final String url = jdbcUrl;
 
@@ -47,12 +54,15 @@ public class KafkaSparkProcessor {
         spark.sparkContext().setLogLevel("WARN");
 
         // 1. 从 Kafka 读流，取消息体为字符串
-        Dataset<Row> kafka = spark.readStream()
+        DataStreamReader reader = spark.readStream()
                 .format("kafka")
                 .option("kafka.bootstrap.servers", bootstrap)
                 .option("subscribe", TOPIC)
-                .option("startingOffsets", "earliest")
-                .load();
+                .option("startingOffsets", "earliest");
+        if (!maxPerTrigger.isEmpty()) {
+            reader = reader.option("maxOffsetsPerTrigger", maxPerTrigger);  // 每批限流
+        }
+        Dataset<Row> kafka = reader.load();
 
         Dataset<Row> lines = kafka.selectExpr("CAST(value AS STRING) AS line");
 
@@ -72,7 +82,7 @@ public class KafkaSparkProcessor {
                 .withColumnRenamed("count", "success_count");
 
         // 3. 每个微批把当前完整统计结果覆盖写入 MySQL(truncate 保留表结构, 不 drop)
-        StreamingQuery query = stats.writeStream()
+        DataStreamWriter<Row> writer = stats.writeStream()
                 .outputMode("complete")
                 .foreachBatch((Dataset<Row> batchDF, Long batchId) -> {
                     long n = batchDF.count();
@@ -92,8 +102,11 @@ public class KafkaSparkProcessor {
                             .option("truncate", "true")   // 用 TRUNCATE 而非 DROP，保住 id/created_at 列
                             .save();
                 })
-                .option("checkpointLocation", checkpoint)
-                .start();
+                .option("checkpointLocation", checkpoint);
+        if (!triggerSec.isEmpty()) {
+            writer = writer.trigger(Trigger.ProcessingTime(triggerSec + " seconds"));  // 每隔 N 秒一个微批
+        }
+        StreamingQuery query = writer.start();
 
         query.awaitTermination();
     }
