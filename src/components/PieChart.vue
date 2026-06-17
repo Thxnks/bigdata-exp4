@@ -1,23 +1,27 @@
 <script setup>
-import { onMounted, ref } from "vue";
+import { onMounted, watch } from "vue";
 import * as echarts from "echarts";
-import { statMock } from "../mock/stat";
 
-const chartRef = ref(null);
+const props = defineProps({
+  data: {
+    type: Array,
+    default: () => []
+  }
+});
 
-onMounted(() => {
-  const chart = echarts.init(chartRef.value);
+let chart = null;
 
-  const airlines = [...new Set(statMock.map(i => i.airlineCode))];
+function renderChart() {
+  if (!chart) return;
 
-  const data = airlines.map(a => {
-    return {
-      name: a,
-      value: statMock
-        .filter(i => i.airlineCode === a)
-        .reduce((sum, i) => sum + i.successCount, 0)
-    };
-  });
+  const airlines = [...new Set(props.data.map(i => i.airlineCode))];
+
+  const pieData = airlines.map(a => ({
+    name: a,
+    value: props.data
+      .filter(i => i.airlineCode === a)
+      .reduce((sum, i) => sum + i.successCount, 0)
+  }));
 
   chart.setOption({
     title: { text: "航司占比" },
@@ -25,13 +29,27 @@ onMounted(() => {
     series: [
       {
         type: "pie",
-        data
+        radius: "60%",
+        data: pieData
       }
     ]
   });
+}
+
+onMounted(() => {
+  chart = echarts.init(document.getElementById("pieChart"));
+  renderChart();
 });
+
+watch(
+  () => props.data,
+  () => {
+    renderChart();
+  },
+  { deep: true }
+);
 </script>
 
 <template>
-  <div ref="chartRef" style="width: 600px; height: 400px;"></div>
+  <div id="pieChart" style="height: 300px;"></div>
 </template>

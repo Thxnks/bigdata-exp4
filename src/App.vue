@@ -1,12 +1,53 @@
 <script setup>
-import { ref } from "vue";
-import { statMock } from "./mock/stat";
+import { ref, computed, onMounted, onUnmounted } from "vue";
+import { getStatList } from "./api/stat";
 
 import LineChart from "./components/LineChart.vue";
 import BarChart from "./components/BarChart.vue";
 import PieChart from "./components/PieChart.vue";
 
-const list = ref(statMock);
+/* ------------------------
+   1️⃣ 筛选条件
+-------------------------*/
+const selectedAirline = ref("");
+const selectedHour = ref("");
+
+/* ------------------------
+   2️⃣ 基础维度数据
+-------------------------*/
+const airlines = [...new Set(tableData.value.map(i => i.airlineCode))];
+const hours = [...new Set(tableData.value.map(i => i.statHour))];
+
+/* ------------------------
+   3️⃣ 过滤后的数据（核心）
+-------------------------*/
+const filteredData = computed(() => {
+  return tableData.value.filter(item => {
+    const matchAirline = selectedAirline.value
+      ? item.airlineCode === selectedAirline.value
+      : true;
+
+    const matchHour = selectedHour.value
+      ? item.statHour === selectedHour.value
+      : true;
+
+    return matchAirline && matchHour;
+  });
+});
+
+/* ------------------------
+   4️⃣ KPI统计（跟随筛选）
+-------------------------*/
+const totalCount = computed(() =>
+  filteredData.value.reduce((sum, i) => sum + i.successCount, 0)
+);
+
+const tableData = ref([]);
+
+onMounted(async () => {
+  const res = await getStatList();
+  tableData.value = res.data;
+});
 </script>
 
 <template>
@@ -15,41 +56,59 @@ const list = ref(statMock);
     <!-- 标题 -->
     <h1 class="title">📊 航空统计 Dashboard</h1>
 
-    <!-- KPI卡片 -->
+    <!-- KPI -->
     <div class="kpi">
       <div class="card">
-        <div class="num">{{ list.length }}</div>
-        <div class="label">数据记录</div>
+        <div class="num">{{ filteredData.length }}</div>
+        <div class="label">记录数</div>
       </div>
 
       <div class="card">
-        <div class="num">
-          {{ list.reduce((s, i) => s + i.successCount, 0) }}
-        </div>
+        <div class="num">{{ totalCount }}</div>
         <div class="label">成功总数</div>
       </div>
 
       <div class="card">
-        <div class="num">
-          {{ new Set(list.map(i => i.airlineCode)).size }}
-        </div>
+        <div class="num">{{ airlines.length }}</div>
         <div class="label">航司数量</div>
       </div>
     </div>
 
-    <!-- 图表区域 -->
+    <!-- 筛选区 -->
+    <div class="filter-box">
+      <select v-model="selectedAirline">
+        <option value="">全部航司</option>
+        <option v-for="a in airlines" :key="a" :value="a">
+          {{ a }}
+        </option>
+      </select>
+
+      <select v-model="selectedHour">
+        <option value="">全部时间</option>
+        <option v-for="h in hours" :key="h" :value="h">
+          {{ h }}
+        </option>
+      </select>
+
+      <button @click="selectedAirline=''; selectedHour=''">
+        重置
+      </button>
+    </div>
+
+    <!-- 图表 -->
     <div class="charts">
 
+      <!-- ⚠️ 关键：把 filteredData 传进去 -->
       <div class="chart-box">
-        <LineChart />
+        <LineChart :data="filteredData" />
       </div>
 
       <div class="chart-box">
-        <BarChart />
+        <BarChart :data="filteredData" />
       </div>
 
       <div class="chart-box">
-        <PieChart />
+        <PieChart :data="filteredData" />
       </div>
 
     </div>
@@ -68,7 +127,7 @@ const list = ref(statMock);
         </thead>
 
         <tbody>
-          <tr v-for="(item, index) in list" :key="index">
+          <tr v-for="(item, index) in filteredData" :key="index">
             <td>{{ item.statHour }}</td>
             <td>{{ item.airlineCode }}</td>
             <td>{{ item.successCount }}</td>
@@ -84,12 +143,9 @@ const list = ref(statMock);
 <style scoped>
 .dashboard {
   padding: 20px;
-  background: #f5f7fb;
   min-height: 100vh;
-}
-
-.title {
-  margin-bottom: 20px;
+  background: linear-gradient(135deg, #0f172a, #1e293b);
+  color: white;
 }
 
 /* KPI */
@@ -101,11 +157,11 @@ const list = ref(statMock);
 
 .card {
   flex: 1;
-  background: white;
   padding: 20px;
   border-radius: 12px;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(10px);
   text-align: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 
 .num {
@@ -113,11 +169,20 @@ const list = ref(statMock);
   font-weight: bold;
 }
 
-.label {
-  color: #666;
+/* 筛选 */
+.filter-box {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
 }
 
-/* charts */
+select, button {
+  padding: 8px;
+  border-radius: 6px;
+  border: none;
+}
+
+/* 图表 */
 .charts {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -125,16 +190,15 @@ const list = ref(statMock);
 }
 
 .chart-box {
-  background: white;
+  background: rgba(255,255,255,0.08);
   padding: 10px;
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 
-/* table */
+/* 表格 */
 .table-box {
   margin-top: 20px;
-  background: white;
+  background: rgba(255,255,255,0.08);
   padding: 20px;
   border-radius: 12px;
 }
@@ -146,7 +210,7 @@ table {
 
 th, td {
   padding: 10px;
-  border-bottom: 1px solid #eee;
   text-align: center;
+  border-bottom: 1px solid rgba(255,255,255,0.2);
 }
 </style>
