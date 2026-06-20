@@ -162,7 +162,7 @@
     <div class="tb-left">
       <button class="btn" id="refreshBtn">刷新</button>
       <button class="btn ghost" id="exportBtn">导出 CSV</button>
-      <label class="switch"><input type="checkbox" id="autoChk"> <span>自动刷新 5s</span></label>
+      <label class="switch"><input type="checkbox" id="autoChk"> <span>自动刷新 3s</span></label>
     </div>
     <div class="tb-right">
       <span class="status" id="status">未加载</span>
@@ -331,7 +331,7 @@ function exportCSV(){
 $('refreshBtn').onclick=loadData;
 $('exportBtn').onclick=exportCSV;
 $('applyUrlBtn').onclick=()=>{$('settingsPanel').classList.remove('open');loadData();};
-$('autoChk').onchange=e=>{if(e.target.checked)timer=setInterval(loadData,5000);else{clearInterval(timer);timer=null;}};
+$('autoChk').onchange=e=>{if(e.target.checked)timer=setInterval(loadData,3000);else{clearInterval(timer);timer=null;}};
 $('searchInp').oninput=e=>{keyword=e.target.value.trim();renderTable();};
 $('topnSeg').onclick=e=>{if(e.target.tagName!=='BUTTON')return;
   [...e.currentTarget.children].forEach(b=>b.classList.remove('active'));e.target.classList.add('active');
