@@ -9,6 +9,10 @@ import org.apache.spark.sql.streaming.DataStreamWriter;
 import org.apache.spark.sql.streaming.StreamingQuery;
 import org.apache.spark.sql.streaming.Trigger;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+
 import static org.apache.spark.sql.functions.col;
 import static org.apache.spark.sql.functions.explode;
 import static org.apache.spark.sql.functions.expr;
@@ -81,26 +85,45 @@ public class KafkaSparkProcessor {
                 .count()
                 .withColumnRenamed("count", "success_count");
 
-        // 3. 每个微批把当前完整统计结果覆盖写入 MySQL(truncate 保留表结构, 不 drop)
+        // 3. 每个微批把当前完整统计结果"原地 upsert"进 MySQL：
+        //    complete 模式给的是每个(小时,航司)的累计总数，逐行 UPDATE 命中则更新、未命中则 INSERT。
+        //    不再 TRUNCATE 整表，避免前端撞上"整表正被重写"的中间态导致行数乱跳。
         DataStreamWriter<Row> writer = stats.writeStream()
                 .outputMode("complete")
                 .foreachBatch((Dataset<Row> batchDF, Long batchId) -> {
                     long n = batchDF.count();
-                    System.out.println("[batch " + batchId + "] 写入 " + n + " 条 (小时,航司) 统计 -> MySQL stat_result");
+                    System.out.println("[batch " + batchId + "] upsert " + n + " 条 (小时,航司) 统计 -> MySQL stat_result");
                     batchDF.select(
                                     col("stat_hour"),
                                     col("airline_code"),
                                     col("success_count").cast("int").as("success_count"))
-                            .write()
-                            .mode(SaveMode.Overwrite)
-                            .format("jdbc")
-                            .option("url", url)
-                            .option("dbtable", "stat_result")
-                            .option("user", "root")
-                            .option("password", "root")
-                            .option("driver", "com.mysql.cj.jdbc.Driver")
-                            .option("truncate", "true")   // 用 TRUNCATE 而非 DROP，保住 id/created_at 列
-                            .save();
+                            .foreachPartition((org.apache.spark.api.java.function.ForeachPartitionFunction<Row>) rows -> {
+                                Class.forName("com.mysql.cj.jdbc.Driver");
+                                try (Connection conn = DriverManager.getConnection(url, "root", "root");
+                                     PreparedStatement update = conn.prepareStatement(
+                                             "UPDATE stat_result SET success_count = ? WHERE stat_hour = ? AND airline_code = ?");
+                                     PreparedStatement insert = conn.prepareStatement(
+                                             "INSERT INTO stat_result (stat_hour, airline_code, success_count) VALUES (?, ?, ?)")) {
+                                    conn.setAutoCommit(false);
+                                    while (rows.hasNext()) {
+                                        Row row = rows.next();
+                                        String statHour = row.getAs("stat_hour");
+                                        String airlineCode = row.getAs("airline_code");
+                                        int successCount = ((Number) row.getAs("success_count")).intValue();
+                                        // complete 模式是累计总数，直接 SET(不是累加)；命中 0 行则插入。
+                                        update.setInt(1, successCount);
+                                        update.setString(2, statHour);
+                                        update.setString(3, airlineCode);
+                                        if (update.executeUpdate() == 0) {
+                                            insert.setString(1, statHour);
+                                            insert.setString(2, airlineCode);
+                                            insert.setInt(3, successCount);
+                                            insert.executeUpdate();
+                                        }
+                                    }
+                                    conn.commit();
+                                }
+                            });
                 })
                 .option("checkpointLocation", checkpoint);
         if (!triggerSec.isEmpty()) {
