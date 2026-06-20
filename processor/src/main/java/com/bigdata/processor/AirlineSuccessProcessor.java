@@ -5,6 +5,7 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Encoders;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.streaming.StreamingQuery;
 import org.apache.spark.sql.streaming.Trigger;
 
@@ -12,6 +13,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
@@ -94,8 +96,10 @@ public class AirlineSuccessProcessor {
         Dataset<Row> statResult = aggregate(parseLines(localLines));
         // 在控制台展示本地测试的统计结果。
         statResult.orderBy("stat_hour", "airline_code").show(200, false);
-        // 将本地测试结果写入 MySQL 表。
+        // 批处理为完整统计结果，同时落三种存储：MySQL + HBase + HDFS。
         writeToMysql(statResult, config);
+        writeToHBase(statResult, config);
+        writeToHdfs(statResult, config);
     }
 
     private static Dataset<AirlineSuccessRecord> parseLines(Dataset<Row> lines) {
@@ -169,6 +173,66 @@ public class AirlineSuccessProcessor {
                 connection.commit();
             }
         });
+    }
+
+    // 将完整统计结果写入 HBase 表(rowkey = stat_hour#airline_code)，作为 HDFS/列式存储加分项。
+    private static void writeToHBase(Dataset<Row> statResult, Properties config) {
+        String quorum = config.getProperty("hbase.zookeeper.quorum");
+        String tableName = config.getProperty("hbase.table");
+        // 未配置 HBase 时跳过，不影响 MySQL 主流程。
+        if (quorum == null || quorum.trim().isEmpty() || tableName == null || tableName.trim().isEmpty()) {
+            return;
+        }
+        String zkPort = config.getProperty("hbase.zookeeper.port", "2181");
+        // 每个分区一个 HBase 连接，批量 Put 写入。
+        statResult.foreachPartition(rows -> {
+            org.apache.hadoop.conf.Configuration hconf = org.apache.hadoop.hbase.HBaseConfiguration.create();
+            hconf.set("hbase.zookeeper.quorum", quorum);
+            hconf.set("hbase.zookeeper.property.clientPort", zkPort);
+            try (org.apache.hadoop.hbase.client.Connection conn =
+                         org.apache.hadoop.hbase.client.ConnectionFactory.createConnection(hconf);
+                 org.apache.hadoop.hbase.client.Table table =
+                         conn.getTable(org.apache.hadoop.hbase.TableName.valueOf(tableName))) {
+                byte[] cf = org.apache.hadoop.hbase.util.Bytes.toBytes("cf");
+                List<org.apache.hadoop.hbase.client.Put> puts = new ArrayList<>();
+                while (rows.hasNext()) {
+                    Row row = rows.next();
+                    String statHour = row.getAs("stat_hour");
+                    String airlineCode = row.getAs("airline_code");
+                    long successCount = ((Number) row.getAs("success_count")).longValue();
+                    // rowkey 用 小时#航司 组合，保证唯一且便于 scan。
+                    org.apache.hadoop.hbase.client.Put put = new org.apache.hadoop.hbase.client.Put(
+                            org.apache.hadoop.hbase.util.Bytes.toBytes(statHour + "#" + airlineCode));
+                    put.addColumn(cf, org.apache.hadoop.hbase.util.Bytes.toBytes("stat_hour"),
+                            org.apache.hadoop.hbase.util.Bytes.toBytes(statHour));
+                    put.addColumn(cf, org.apache.hadoop.hbase.util.Bytes.toBytes("airline_code"),
+                            org.apache.hadoop.hbase.util.Bytes.toBytes(airlineCode));
+                    put.addColumn(cf, org.apache.hadoop.hbase.util.Bytes.toBytes("success_count"),
+                            org.apache.hadoop.hbase.util.Bytes.toBytes(String.valueOf(successCount)));
+                    puts.add(put);
+                }
+                if (!puts.isEmpty()) {
+                    table.put(puts);
+                }
+            }
+        });
+        System.out.println("[HBase] 统计结果已写入表 " + tableName);
+    }
+
+    // 将完整统计结果以 CSV 写入 HDFS，满足"结果存储到 HDFS"的实验要求。
+    private static void writeToHdfs(Dataset<Row> statResult, Properties config) {
+        String path = config.getProperty("hdfs.output.path");
+        // 未配置 HDFS 输出路径时跳过。
+        if (path == null || path.trim().isEmpty()) {
+            return;
+        }
+        // 合并为单文件、带表头、覆盖旧输出，便于 hdfs dfs -cat 查看。
+        statResult.coalesce(1)
+                .write()
+                .mode(SaveMode.Overwrite)
+                .option("header", "true")
+                .csv(path);
+        System.out.println("[HDFS] 统计结果已写入 " + path);
     }
 
     private static Properties loadConfig() throws Exception {

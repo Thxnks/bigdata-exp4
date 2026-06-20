@@ -16,6 +16,7 @@
         <spark.version>3.5.1</spark.version>
         <scala.binary.version>2.12</scala.binary.version>
         <mysql.connector.version>8.3.0</mysql.connector.version>
+        <hbase.version>2.4.17</hbase.version>
     </properties>
 
     <dependencies>
@@ -39,6 +40,24 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
             <version>2.0.13</version>
+        </dependency>
+        <!-- hadoop-common 仅编译期用(provided)，提供 org.apache.hadoop.conf.Configuration，运行时由 Spark 提供 -->
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-common</artifactId>
+            <version>3.2.4</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- HBase 写入(加分项)。排除 hadoop/slf4j，运行时用集群/Spark 自带，避免 fat jar 冲突 -->
+        <dependency>
+            <groupId>org.apache.hbase</groupId>
+            <artifactId>hbase-client</artifactId>
+            <version>${hbase.version}</version>
+            <exclusions>
+                <exclusion><groupId>org.apache.hadoop</groupId><artifactId>*</artifactId></exclusion>
+                <exclusion><groupId>org.slf4j</groupId><artifactId>*</artifactId></exclusion>
+                <exclusion><groupId>log4j</groupId><artifactId>*</artifactId></exclusion>
+            </exclusions>
         </dependency>
     </dependencies>
 
