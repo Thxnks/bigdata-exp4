@@ -1,7 +1,7 @@
 # 角色 B：Spark 处理程序运行手册（node1）
 
 > 作用：消费 Kafka `gds-log-topic` → 统计每小时每航司预订成功数 → 写入 MySQL `stat_result`。
-> 用 **Structured Streaming**（流计算消费 Kafka，实验文档说可额外加分）。
+> 用 **Structured Streaming**
 
 ## 前置条件
 
@@ -19,7 +19,7 @@ mvn clean package
 
 ---
 
-## 方式一：本机快速跑（local，最稳，先用这个验证）
+## 方式一：本机快速跑
 
 ```bash
 /export/server/spark/bin/spark-submit \
@@ -37,7 +37,7 @@ mysql -uroot -proot -e "SELECT * FROM bigdata_exp4.stat_result ORDER BY success_
 
 ---
 
-## 方式二：YARN 分布式跑（演示"分布式处理"，加分）
+## 方式二：YARN 分布式跑
 
 先启动 HDFS + YARN，checkpoint 放 HDFS：
 ```bash
@@ -81,8 +81,6 @@ hdfs dfs -mkdir -p /user/hadoop
 rm -rf /home/hadoop/spark-ckpt-gds            # local 模式
 hdfs dfs -rm -r /user/hadoop/spark-ckpt-gds   # yarn 模式
 ```
-
-## 答辩要点
 
 - **为什么用流计算？** Structured Streaming 持续消费 Kafka，producer 边发、统计边更新、MySQL 实时刷新，符合"实时采集分析"场景，且文档说额外加分。
 - **怎么解析的？** 按逗号切分，只取 `ITARES` 日志，用 `regexp_extract_all` 提取行尾所有 `航司:success`，按"小时+航司" `groupBy().count()` 聚合。
