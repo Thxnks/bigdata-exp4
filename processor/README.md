@@ -1,60 +1,61 @@
-# Processor Module
+# Processor 模块
 
-This directory is the B part of `bigdata-exp4`: Spark/MapReduce data
-processing. The current main implementation uses Java + Spark.
+本目录是 `bigdata-exp4` 项目中的 B 部分，主要负责 Spark/MapReduce 数据处理。目前主要实现方式是 Java + Spark。
 
-## Function
+## 功能说明
 
-The processor reads raw airline booking log lines, keeps only `ITARES` records,
-parses booking success entries, counts successful bookings by hour and airline,
-and writes the result to MySQL.
+Processor 模块负责读取原始航空订票日志数据，只保留 `ITARES` 类型的记录，解析其中的订票成功信息，然后按照“小时”和“航空公司”进行统计，最后将统计结果写入 MySQL 数据库。
 
-Final data flow:
+最终数据流如下：
 
 ```text
 Kafka gds-log-topic
 -> Java + Spark processor
 -> MySQL bigdata_exp4.stat_result
--> backend/frontend display
+-> 后端 / 前端页面展示
 ```
 
-This module only handles data processing. It does not implement `producer/`,
-`backend/`, `sql/`, or `frontend/`.
+本模块只负责数据处理部分，不包含 `producer/`、`backend/`、`sql/` 或 `frontend/` 的实现。
 
-## Input Fields
+## 输入字段说明
 
-Each log line is comma-separated. The parser uses these zero-based fields:
+每一行日志数据使用英文逗号分隔。程序解析时主要使用以下字段，下标从 0 开始：
 
 ```text
-fields[1]  log type, only ITARES is processed
-fields[2]  date, for example 20180830
-fields[3]  hour, for example 19
-fields[8]  success entries, for example CA:success;CA:success;
+fields[1]  日志类型，只处理 ITARES
+fields[2]  日期，例如 20180830
+fields[3]  小时，例如 19
+fields[8]  成功订票记录，例如 CA:success;CA:success;
 ```
 
-`stat_hour` is formatted as:
+`stat_hour` 的格式为：
 
 ```text
 2018-08-30 19
 ```
 
-Repeated success entries in the same line are counted repeatedly. For example,
-`CA:success;CA:success;` is counted as 2 successful bookings for `CA`.
+同一行中重复出现的 success 记录会被重复统计。例如：
 
-## Kafka Input
+```text
+CA:success;CA:success;
+```
 
-The Kafka settings follow the project README unified convention:
+会被统计为 `CA` 航空公司成功订票 2 次。
+
+## Kafka 输入
+
+Kafka 配置遵循项目 README 中统一约定：
 
 ```text
 bootstrap servers: 192.168.88.101:9092
 topic: gds-log-topic
 ```
 
-One Kafka message should contain one raw log line.
+Kafka 中的一条消息对应一行原始日志数据。
 
-## MySQL Output
+## MySQL 输出
 
-The processor writes to:
+Processor 模块将统计结果写入以下 MySQL 表：
 
 ```text
 host: 192.168.88.101
@@ -65,7 +66,7 @@ username: root
 password: root
 ```
 
-Output fields:
+输出字段如下：
 
 ```text
 stat_hour
@@ -73,40 +74,41 @@ airline_code
 success_count
 ```
 
-## Local File Test
+## 本地文件测试模式
 
-The Java program supports a local batch mode for testing before Kafka is ready.
-By default, it first tries:
+Java 程序支持本地批处理测试模式，方便在 Kafka 还没有准备好时先测试数据处理逻辑。
+
+默认情况下，程序会优先读取：
 
 ```text
 data/kafka采集数据实验.txt
 ```
 
-If that file does not exist, it falls back to:
+如果该文件不存在，则会读取备用样例文件：
 
 ```text
 processor/data/sample_log.txt
 ```
 
-You can also pass a file path explicitly with `--input`.
+也可以通过 `--input` 参数手动指定输入文件路径。
 
-## Build
+## 打包方式
 
-Run from the `processor/` directory:
+在 `processor/` 目录下执行：
 
 ```bash
 mvn clean package
 ```
 
-The packaged jar is generated under:
+打包后的 jar 文件会生成在：
 
 ```text
 processor/target/
 ```
 
-## Run Local Batch Mode
+## 运行本地批处理模式
 
-Run from the project root:
+在项目根目录下执行：
 
 ```bash
 spark-submit \
@@ -115,7 +117,7 @@ spark-submit \
   --mode local
 ```
 
-Run with an explicit input file:
+如果要指定输入文件，可以执行：
 
 ```bash
 spark-submit \
@@ -125,12 +127,11 @@ spark-submit \
   --input processor/data/sample_log.txt
 ```
 
-Local mode prints the aggregated result and writes the same fields to
-`bigdata_exp4.stat_result`.
+本地模式会在控制台打印聚合后的统计结果，并将相同字段写入 MySQL 的 `bigdata_exp4.stat_result` 表中。
 
-## Run Kafka Streaming Mode
+## 运行 Kafka 流处理模式
 
-After Kafka and MySQL are ready:
+在 Kafka 和 MySQL 都启动后，执行：
 
 ```bash
 spark-submit \
@@ -139,8 +140,6 @@ spark-submit \
   --mode kafka
 ```
 
-Kafka streaming mode reads `gds-log-topic`, aggregates each micro-batch by
-`stat_hour` and `airline_code`, and writes `stat_hour, airline_code,
-success_count` to `stat_result`. If a row for the same `stat_hour` and
-`airline_code` already exists, the processor updates `success_count`; otherwise
-it inserts a new row.
+Kafka 流处理模式会从 `gds-log-topic` 中读取数据，按照每个微批次对 `stat_hour` 和 `airline_code` 进行分组统计，并将 `stat_hour`、`airline_code`、`success_count` 写入 `stat_result` 表。
+
+如果 MySQL 中已经存在相同 `stat_hour` 和 `airline_code` 的记录，程序会更新对应的 `success_count`；如果不存在，则会插入一条新的统计记录。
